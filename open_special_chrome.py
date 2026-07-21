@@ -2,10 +2,12 @@ import subprocess
 import time
 import requests
 import pandas as pd
+import random
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -59,6 +61,8 @@ class open_chrome_with_auth:
             "https://forms.gle/91WKN9FKHqc59oM29"
         ).replace(' ', '%20').replace('\n', '%0A')
 
+        contador = 0
+        N = 10
         for index, row in self.df.iterrows():
 
             if pd.notna(row["Envio"]) and row["Envio"].strip() != "":
@@ -73,19 +77,38 @@ class open_chrome_with_auth:
 
             self.salva_excel(archive_path)
 
+            contador += 1
+
+            if contador % N == 0:
+                tempo = random.randint(10, 60)  # entre 30 e 90 segundos
+                print(f"Pausa de {tempo}s após {contador} envios...")
+                time.sleep(tempo)
+
     def enviar_mensagens(self, contato, nome, mensagem):
-        self.driver.get(f"https://web.whatsapp.com/send?phone={contato}&text={mensagem}")
+        self.driver.get(f"https://web.whatsapp.com/send?phone=+55{contato}&text={mensagem}")
 
         contato_existente = self.confere_existencia_contato()
 
         if contato_existente:
-            botao_enviar = WebDriverWait(self.driver, 20).until(
+            time.sleep(4)
+            # botao_enviar = WebDriverWait(self.driver, 20).until(
+            #     EC.element_to_be_clickable(
+            #         (By.XPATH, "//button[@aria-label='Enviar']")
+            #     )
+            # )
+
+            # botao_enviar.click()
+
+            #Testando
+            campo = WebDriverWait(self.driver, 30).until(
                 EC.element_to_be_clickable(
-                    (By.XPATH, "//button[@aria-label='Enviar']")
+                    (By.CSS_SELECTOR, 'div[data-testid="conversation-compose-box-input"]')
                 )
             )
 
-            botao_enviar.click()
+            campo.click()
+            campo.send_keys(Keys.CONTROL, "a")
+            campo.send_keys(Keys.BACKSPACE)
 
             time.sleep(2)
             return "Enviado"
@@ -98,34 +121,27 @@ class open_chrome_with_auth:
         self.df['CELULAR'] = self.df['CELULAR'].str.replace(r'\D', '', regex=True)
 
     def confere_existencia_contato(self):
-        # 1 - Aguarda aparecer a mensagem da criptografia
-        while not self.driver.find_elements(
-            By.XPATH,
-            "//div[contains(., 'Protegida com a criptografia de ponta a ponta')]"
-        ):
-            time.sleep(0.1)
-
-        # 2 - Aguarda ela desaparecer
-        while self.driver.find_elements(
-            By.XPATH,
-            "//div[contains(., 'Protegida com a criptografia de ponta a ponta')]"
-        ):
-            time.sleep(0.1)
-
-        # 3 - Depois que sumiu, espera até 3 segundos pelo logo do WhatsApp
         inicio = time.time()
 
-        while time.time() - inicio < 3:
+        while time.time() - inicio < 5:
 
+            # Número inexistente
             if self.driver.find_elements(
                 By.XPATH,
-                "//span[@data-testid='wa-wordmark-refreshed']"
+                "//div[@data-testid='popup-contents' and contains(., 'não está no WhatsApp')]"
+            ):
+                return False
+
+            # Conversa carregou
+            if self.driver.find_elements(
+                By.XPATH,
+                "//div[@contenteditable='true'][@data-tab='10']"
             ):
                 return True
 
             time.sleep(0.1)
 
-        return False
+        return None
     
     def salva_excel(self, archive_path):
         self.df.to_excel(archive_path, sheet_name="Pastores", index=False)
